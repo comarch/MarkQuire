@@ -12,7 +12,7 @@ import { DriveComment } from "../../types/drive";
 import { parseSuggestions } from "../../utils/patch";
 import { splitMentions } from "../../utils/mentions";
 import { buildPassageLink } from "../../services/driveState";
-import { SuggestionCard } from "./SuggestionCard";
+import { SuggestionCard, AcceptSuggestionHunkResult } from "./SuggestionCard";
 
 interface CommentThreadProps {
   comment: DriveComment;
@@ -24,7 +24,7 @@ interface CommentThreadProps {
   onAcceptSuggestionHunk?: (
     commentId: string,
     hunkId: string,
-  ) => Promise<"applied" | "unresolvable">;
+  ) => Promise<AcceptSuggestionHunkResult> | AcceptSuggestionHunkResult;
   onAcceptAllSuggestions?: (commentId: string) => Promise<void>;
   onRejectSuggestion?: (commentId: string) => Promise<void>;
   isSelected?: boolean;

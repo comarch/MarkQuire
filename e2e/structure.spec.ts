@@ -37,14 +37,23 @@ test.describe("structure tools", () => {
     const text = await editor.innerText();
     expect(text.indexOf("beta body")).toBeLessThan(text.indexOf("alpha body"));
 
-    // The TOC insertion links the current sections.
+    // The TOC insertion links the current sections; the rich overlay
+    // renders them as labels, so the visible text carries no raw syntax.
     await page.getByTitle("Insert a table of contents").click();
-    await expect(editor).toContainText("- [Beta](#beta)");
-    await expect(editor).toContainText("- [Alpha](#alpha)");
+    await expect(
+      page.locator(".cm-content .cm-rich-link-text", { hasText: "Beta" }),
+    ).toBeVisible();
+    await expect(
+      page.locator(".cm-content .cm-rich-link-text", { hasText: "Alpha" }),
+    ).toBeVisible();
 
     // Heading numbering adds sequential numbers.
     await page.getByTitle("Number level 2+ headings").click();
-    await expect(editor).toContainText("## 1. Beta");
-    await expect(editor).toContainText("## 2. Alpha");
+    await expect(
+      page.locator(".cm-content .cm-rich-h2", { hasText: "1. Beta" }),
+    ).toBeVisible();
+    await expect(
+      page.locator(".cm-content .cm-rich-h2", { hasText: "2. Alpha" }),
+    ).toBeVisible();
   });
 });

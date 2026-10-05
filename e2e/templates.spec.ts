@@ -16,9 +16,11 @@ test.describe("templates and snippets", () => {
     // Create a new document from the RFC template.
     await page.getByText("RFC", { exact: true }).click();
     await expect(page.locator(".cm-content")).toContainText("RFC: Welcome");
-    await expect(page.locator(".cm-content")).toContainText(
-      "## Alternatives considered",
-    );
+    await expect(
+      page.locator(".cm-content .cm-rich-h2", {
+        hasText: "Alternatives considered",
+      }),
+    ).toBeVisible();
 
     // The snippet tab inserts an expanded snippet at the cursor.
     await page.getByTitle("Templates and snippets").click();

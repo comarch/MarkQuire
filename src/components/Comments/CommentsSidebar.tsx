@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { X, MessageSquare, Plus, CheckCircle2, ListFilter } from "lucide-react";
 import { DriveComment } from "../../types/drive";
 import { CommentThread } from "./CommentThread";
+import { AcceptSuggestionHunkResult } from "./SuggestionCard";
 
 interface CommentsSidebarProps {
   isOpen: boolean;
@@ -18,7 +19,7 @@ interface CommentsSidebarProps {
   onAcceptSuggestionHunk?: (
     commentId: string,
     hunkId: string,
-  ) => Promise<"applied" | "unresolvable">;
+  ) => Promise<AcceptSuggestionHunkResult> | AcceptSuggestionHunkResult;
   onAcceptAllSuggestions?: (commentId: string) => Promise<void>;
   onRejectSuggestion?: (commentId: string) => Promise<void>;
 }

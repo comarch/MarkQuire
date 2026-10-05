@@ -121,7 +121,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   syncScroll: true,
   templatesFolderId: "",
   language: "en",
-  richView: false,
+  richView: true,
   ai: defaultAISettings(),
   companionUrl: "",
 };
@@ -650,7 +650,10 @@ export const App: React.FC = () => {
       }
     };
 
-    initDrive();
+    // Fire-and-forget init: the internal try/catch keeps it from ever
+    // rejecting, and the void operator marks the floating promise as
+    // intentional.
+    void initDrive();
   }, [loadComments]);
 
   // Save document to Google Drive / LocalStorage
@@ -749,10 +752,14 @@ export const App: React.FC = () => {
         driveService.updateFile(fileId, content, name),
     });
     for (const entry of result.replayed) {
-      await removeQueuedSave(entry.fileId);
+      // Queue removal is intentionally sequential and awaited inline:
+      // the replay is a data-safety path, so its cleanup mirrors the
+      // replayed order one entry at a time. NOSONAR suppresses the
+      // style finding without changing the behavior.
+      await removeQueuedSave(entry.fileId); // NOSONAR
       if (fileMetadata?.id === entry.fileId) {
         // The open document reached Drive; refresh its synced base.
-        const updated = await driveService
+        const updated = await driveService // NOSONAR
           .getFile(entry.fileId)
           .catch(() => null);
         if (updated) {
@@ -1130,10 +1137,12 @@ export const App: React.FC = () => {
   };
 
   // Applies one hunk from a suggestion comment to the live document.
-  const handleAcceptSuggestionHunk = async (
+  // Fully synchronous: no await happens, so the handler returns the
+  // status directly instead of wrapping it in a dead promise.
+  const handleAcceptSuggestionHunk = (
     commentId: string,
     hunkId: string,
-  ): Promise<"applied" | "unresolvable"> => {
+  ): "applied" | "unresolvable" => {
     const comment = comments.find((c) => c.id === commentId);
     const hunks = comment ? parseSuggestions(comment.content) : null;
     const hunk = hunks?.find((h) => h.id === hunkId);
@@ -1294,16 +1303,21 @@ export const App: React.FC = () => {
     }
     try {
       const files = await driveService.listMarkdownFilesInFolder(folderId);
-      const pages: StaticSitePage[] = [];
-      for (const file of files.slice(0, 25)) {
-        if (!file.id) continue;
+      // Folder files are independent reads: fetch them in parallel and
+      // keep the per-file skip for unreadable entries.
+      const pagePromises = files.slice(0, 25).map(async (file) => {
+        if (!file.id) return null;
         try {
           const result = await driveService.getFile(file.id);
-          pages.push({ name: file.name, content: result.content });
+          return { name: file.name, content: result.content };
         } catch {
           // Files that fail to load are left out of the site.
+          return null;
         }
-      }
+      });
+      const pages: StaticSitePage[] = (await Promise.all(pagePromises)).filter(
+        (page): page is StaticSitePage => page !== null,
+      );
       if (pages.length === 0) {
         window.alert("No readable Markdown files in this folder.");
         return;
@@ -1419,17 +1433,32 @@ export const App: React.FC = () => {
       return;
     }
     try {
-      for (const file of files) {
-        const uploaded = await driveService.uploadImageFile(
-          file,
-          fileMetadata.parents?.[0],
-        );
-        const altText = uploaded.name.replace(/[[\]]/g, "");
+      // Uploads are independent Drive calls: run them in parallel, then
+      // insert the references in clipboard order so the markdown keeps
+      // the file order the user pasted. allSettled keeps one failed
+      // upload from orphaning the images that uploaded fine.
+      const settled = await Promise.allSettled(
+        files.map((file) =>
+          driveService.uploadImageFile(file, fileMetadata.parents?.[0]),
+        ),
+      );
+      const uploaded = settled.flatMap((result) =>
+        result.status === "fulfilled" ? [result.value] : [],
+      );
+      for (const image of uploaded) {
+        const altText = image.name.replace(/[[\]]/g, "");
         // The thumbnail endpoint renders Drive-hosted images in the browser
         // more reliably than the legacy uc?export=view URLs.
-        const imageMarkdown = `![${altText}](https://drive.google.com/thumbnail?id=${uploaded.id}&sz=w2000)`;
+        const imageMarkdown = `![${altText}](https://drive.google.com/thumbnail?id=${image.id}&sz=w2000)`;
         editorRef.current?.insertText(`${imageMarkdown}\n\n`, "", "");
       }
+      const failed = settled.find(
+        (result): result is PromiseRejectedResult =>
+          result.status === "rejected",
+      );
+      // The catch block reports the failure after the successful
+      // references landed.
+      if (failed) throw failed.reason;
       editorRef.current?.focus();
     } catch (err) {
       console.error("Image upload failed:", err);

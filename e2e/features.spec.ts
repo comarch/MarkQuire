@@ -26,9 +26,17 @@ test("checking a task in the preview updates the markdown source", async ({
   await expect(unchecked).toBeVisible();
   await unchecked.click();
 
+  // The editor renders the task as a checkbox widget whose state mirrors
+  // the markdown source rewrite.
   await expect(page.locator(".cm-content")).toContainText(
-    "[x] Export directly to team Google Workspace Drive folder",
+    "Export directly to team Google Workspace Drive folder",
   );
+  await expect(page.locator(".cm-content .cm-rich-task-checkbox")).toHaveCount(
+    4,
+  );
+  await expect(
+    page.locator(".cm-content .cm-rich-task-checkbox:checked"),
+  ).toHaveCount(4);
   await expect(
     page.locator("input.task-list-item-checkbox[checked]"),
   ).toHaveCount(4);
