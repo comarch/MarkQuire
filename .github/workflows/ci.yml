@@ -23,6 +23,9 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+      # OIDC lets Codecov ingest the report on public repos while no
+      # CODECOV_TOKEN secret is configured.
+      id-token: write
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -56,6 +59,7 @@ jobs:
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f # v7.0.0
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          use_oidc: true
           files: ./coverage/lcov.info
           fail_ci_if_error: false
 
