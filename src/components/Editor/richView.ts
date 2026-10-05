@@ -496,8 +496,10 @@ const decorateTaskLines = (
   replaces: Range<Decoration>[],
 ): void => {
   for (const span of taskSpans.values()) {
-    const line = state.doc.lineAt(span.bracketFrom);
-    if (overlaps(line.from, line.to, codeRanges)) continue;
+    // Only the bracket span decides: it can never sit inside inline code
+    // (a task line with `code` further out keeps its widgets) but it is
+    // inside fenced code, where the widgets would be inert.
+    if (overlaps(span.bracketFrom, span.bracketFrom + 3, codeRanges)) continue;
     if (UNORDERED_BULLET.test(state.sliceDoc(span.bulletFrom, span.bulletTo))) {
       replaces.push(
         Decoration.replace({

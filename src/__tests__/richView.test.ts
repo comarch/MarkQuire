@@ -396,4 +396,15 @@ describe("rich view decorations", () => {
     // The task marker stays visible because nothing replaced it.
     expect(state.sliceDoc(doc.indexOf("- [ ]"))).toContain("- [ ]");
   });
+
+  it("keeps widgets on task lines that carry inline code", () => {
+    const doc = "intro\n\n- [ ] run `npm test` after lunch\n";
+    const state = makeState(doc, 0);
+    const decorations = inspect(collect(state));
+
+    // Only the bracket span is checked against code ranges, so inline
+    // code elsewhere on the line does not disable the checkbox.
+    expect(widgetInstances(decorations, TaskCheckboxWidget)).toHaveLength(1);
+    expect(widgetInstances(decorations, BulletWidget)).toHaveLength(1);
+  });
 });

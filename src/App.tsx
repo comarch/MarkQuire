@@ -1435,11 +1435,15 @@ export const App: React.FC = () => {
     try {
       // Uploads are independent Drive calls: run them in parallel, then
       // insert the references in clipboard order so the markdown keeps
-      // the file order the user pasted.
-      const uploaded = await Promise.all(
+      // the file order the user pasted. allSettled keeps one failed
+      // upload from orphaning the images that uploaded fine.
+      const settled = await Promise.allSettled(
         files.map((file) =>
           driveService.uploadImageFile(file, fileMetadata.parents?.[0]),
         ),
+      );
+      const uploaded = settled.flatMap((result) =>
+        result.status === "fulfilled" ? [result.value] : [],
       );
       for (const image of uploaded) {
         const altText = image.name.replace(/[[\]]/g, "");
@@ -1448,6 +1452,13 @@ export const App: React.FC = () => {
         const imageMarkdown = `![${altText}](https://drive.google.com/thumbnail?id=${image.id}&sz=w2000)`;
         editorRef.current?.insertText(`${imageMarkdown}\n\n`, "", "");
       }
+      const failed = settled.find(
+        (result): result is PromiseRejectedResult =>
+          result.status === "rejected",
+      );
+      // The catch block reports the failure after the successful
+      // references landed.
+      if (failed) throw failed.reason;
       editorRef.current?.focus();
     } catch (err) {
       console.error("Image upload failed:", err);
