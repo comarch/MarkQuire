@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { EditorSelection, EditorState, Range } from "@codemirror/state";
-import { Decoration } from "@codemirror/view";
+import { Decoration, EditorView } from "@codemirror/view";
 import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
 import {
   BulletWidget,
@@ -10,6 +10,7 @@ import {
   TaskCheckboxWidget,
   activeLineNumbers,
   collectRichDecorations,
+  richViewExtension,
 } from "../components/Editor/richView";
 
 // The overlay is a pure function of the parsed document and the active
@@ -279,5 +280,90 @@ describe("rich view decorations", () => {
     const decorations = inspect(collect(state));
 
     expect(widgetInstances(decorations, MathWidget)).toHaveLength(0);
+  });
+
+  it("renders widget DOM: bullets, rules, math, and images", () => {
+    expect(new BulletWidget("•").toDOM().className).toBe("cm-rich-bullet");
+    expect(new BulletWidget("•").toDOM().textContent).toBe("•");
+    expect(new HrWidget().toDOM().className).toBe("cm-rich-hr");
+
+    const math = new MathWidget("a^2", false).toDOM();
+    expect(math.className).toContain("cm-rich-math");
+    expect(math.querySelector(".katex")).not.toBeNull();
+
+    const display = new MathWidget("a^2", true).toDOM();
+    expect(display.className).toContain("cm-rich-math-display");
+
+    const safe = new ImageWidget("data:image/png;base64,AAAA", "pic").toDOM();
+    expect(safe.querySelector("img")?.getAttribute("src")).toBe(
+      "data:image/png;base64,AAAA",
+    );
+    expect(safe.querySelector("img")?.getAttribute("alt")).toBe("pic");
+
+    const unsafe = new ImageWidget("javascript:alert(1)", "x").toDOM();
+    expect(unsafe.querySelector("img")).toBeNull();
+  });
+
+  it("toggles the task markdown source when the checkbox is clicked", () => {
+    const state = makeState("- [ ] open item\nplain\n", 20);
+    const transactions: unknown[] = [];
+    const view = {
+      state,
+      dispatch: (transaction: unknown) => transactions.push(transaction),
+    } as unknown as EditorView;
+
+    const box = new TaskCheckboxWidget(0, false).toDOM(view) as HTMLElement;
+    expect(box.className).toBe("cm-rich-task-checkbox");
+    expect(box.querySelector("input")).toBeNull();
+
+    const event = new MouseEvent("mousedown", { cancelable: true });
+    box.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(transactions).toHaveLength(1);
+    const change = (
+      transactions[0] as {
+        changes: { from: number; to: number; insert: string };
+      }
+    ).changes;
+    expect(change.insert).toBe("- [x] open item");
+
+    // A click on an already-checked box toggles back to unchecked.
+    const checkedView = {
+      state: makeState("- [x] done item\nplain\n", 20),
+      dispatch: (transaction: unknown) => transactions.push(transaction),
+    } as unknown as EditorView;
+    const checked = new TaskCheckboxWidget(0, true).toDOM(checkedView);
+    checked.dispatchEvent(new MouseEvent("mousedown", { cancelable: true }));
+    expect(
+      (transactions[1] as { changes: { insert: string } }).changes.insert,
+    ).toBe("- [ ] done item");
+  });
+
+  it("mounts the overlay on a live editor and survives doc updates", () => {
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const view = new EditorView({
+      state: EditorState.create({
+        doc: "# Title\n\n**bold** words\n",
+        extensions: [markdown({ base: markdownLanguage }), richViewExtension],
+      }),
+      parent: host,
+    });
+
+    try {
+      // Unfocused editor: the whole document renders formatted.
+      expect(host.querySelector(".cm-rich-h1")).not.toBeNull();
+      expect(host.textContent).not.toContain("**");
+
+      // A document change rebuilds the overlay through plugin.update.
+      view.dispatch({
+        changes: { from: view.state.doc.length, insert: "\n\n- item\n" },
+      });
+      expect(host.querySelector(".cm-rich-bullet")).not.toBeNull();
+      expect(host.querySelector(".cm-rich-h1")).not.toBeNull();
+    } finally {
+      view.destroy();
+      host.remove();
+    }
   });
 });
