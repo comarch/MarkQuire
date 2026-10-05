@@ -2,9 +2,15 @@ import React, { useState } from "react";
 import { Check, X, AlertTriangle, FileDiff } from "lucide-react";
 import { SuggestionHunk } from "../../utils/patch";
 
+/** Result of applying one suggestion hunk; sync or promised. */
+export type AcceptSuggestionHunkResult = "applied" | "unresolvable";
+
 interface SuggestionCardProps {
   hunks: SuggestionHunk[];
-  onAccept: (hunkId: string) => Promise<"applied" | "unresolvable">;
+  // Sync and async handlers both fit: the card awaits either shape.
+  onAccept: (
+    hunkId: string,
+  ) => Promise<AcceptSuggestionHunkResult> | AcceptSuggestionHunkResult;
   onAcceptAll: () => Promise<void>;
   onReject: () => Promise<void>;
   disabled?: boolean;
