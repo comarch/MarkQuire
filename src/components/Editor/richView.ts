@@ -532,6 +532,18 @@ const dedupeReplaces = (
 };
 
 /**
+ * Decoration sinks the syntax walk fills. Grouped as one object so the
+ * walk keeps a small parameter list.
+ */
+interface DecorationSinks {
+  replaces: Range<Decoration>[];
+  marks: Range<Decoration>[];
+  lines: Range<Decoration>[];
+  // Code spans and fences: math and task widgets never render inside.
+  codeRanges: { from: number; to: number }[];
+}
+
+/**
  * Walks the syntax tree over the visible ranges and dispatches every
  * node kind to its decorator. The switch stays flat: one case per node
  * name, each case a single call, so cognitive complexity stays low.
@@ -541,11 +553,9 @@ const collectTreeDecorations = (
   visible: readonly { from: number; to: number }[],
   isActive: (from: number, to: number) => boolean,
   taskSpans: ReadonlyMap<number, TaskSpan>,
-  replaces: Range<Decoration>[],
-  marks: Range<Decoration>[],
-  lines: Range<Decoration>[],
-  codeRanges: { from: number; to: number }[],
+  sinks: DecorationSinks,
 ): void => {
+  const { replaces, marks, lines, codeRanges } = sinks;
   let bulletDepth = 0;
   for (const { from, to } of visible) {
     syntaxTree(state).iterate({
@@ -647,27 +657,24 @@ export const collectRichDecorations = (
 
   const taskSpans = collectTaskSpans(state, visible, isActive);
 
-  const replaces: Range<Decoration>[] = [];
-  const marks: Range<Decoration>[] = [];
-  const lines: Range<Decoration>[] = [];
-  // Code spans and fences: math widgets and task widgets never render
-  // inside them.
-  const codeRanges: { from: number; to: number }[] = [];
+  const sinks: DecorationSinks = {
+    replaces: [],
+    marks: [],
+    lines: [],
+    codeRanges: [],
+  };
 
-  collectTreeDecorations(
+  collectTreeDecorations(state, visible, isActive, taskSpans, sinks);
+  collectMathWidgets(
     state,
     visible,
+    sinks.codeRanges,
     isActive,
-    taskSpans,
-    replaces,
-    marks,
-    lines,
-    codeRanges,
+    sinks.replaces,
   );
-  collectMathWidgets(state, visible, codeRanges, isActive, replaces);
-  decorateTaskLines(state, taskSpans, codeRanges, replaces);
+  decorateTaskLines(state, taskSpans, sinks.codeRanges, sinks.replaces);
 
-  return [...dedupeReplaces(replaces), ...marks, ...lines];
+  return [...dedupeReplaces(sinks.replaces), ...sinks.marks, ...sinks.lines];
 };
 
 const richViewPlugin = ViewPlugin.fromClass(
