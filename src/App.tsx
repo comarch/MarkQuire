@@ -650,7 +650,10 @@ export const App: React.FC = () => {
       }
     };
 
-    initDrive();
+    // Fire-and-forget init: the internal try/catch keeps it from ever
+    // rejecting, and the void operator marks the floating promise as
+    // intentional.
+    void initDrive();
   }, [loadComments]);
 
   // Save document to Google Drive / LocalStorage
