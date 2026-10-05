@@ -119,7 +119,7 @@ describe("rich view decorations", () => {
         !item.isLine &&
         item.className === undefined,
     );
-    expect(hides.length).toBe(8);
+    expect(hides).toHaveLength(8);
   });
 
   it("reveals raw emphasis while the cursor edits that line", () => {
@@ -148,7 +148,7 @@ describe("rich view decorations", () => {
         !item.isLine &&
         item.className === undefined,
     );
-    expect(hides.length).toBe(2);
+    expect(hides).toHaveLength(2);
   });
 
   it("hides blockquote marks and styles quoted lines", () => {
@@ -171,7 +171,7 @@ describe("rich view decorations", () => {
     const decorations = inspect(collect(state));
     const bullets = widgetInstances(decorations, BulletWidget);
 
-    expect(bullets.length).toBe(2);
+    expect(bullets).toHaveLength(2);
     expect(bullets[0]?.widget.char).toBe("•");
     expect(bullets[0]?.found.from).toBe(0);
   });
@@ -180,7 +180,7 @@ describe("rich view decorations", () => {
     const state = makeState("1. first\n2. second\n", 0);
     const decorations = inspect(collect(state));
 
-    expect(widgetInstances(decorations, BulletWidget).length).toBe(0);
+    expect(widgetInstances(decorations, BulletWidget)).toHaveLength(0);
   });
 
   it("renders task checkboxes for both task states", () => {
@@ -189,7 +189,7 @@ describe("rich view decorations", () => {
     const decorations = inspect(collect(state));
     const tasks = widgetInstances(decorations, TaskCheckboxWidget);
 
-    expect(tasks.length).toBe(2);
+    expect(tasks).toHaveLength(2);
     expect(tasks[0]?.widget.checked).toBe(false);
     expect(tasks[1]?.widget.checked).toBe(true);
     expect(tasks[0]?.found.from).toBe(doc.indexOf("[ ]"));
@@ -201,7 +201,7 @@ describe("rich view decorations", () => {
     const state = makeState(doc, doc.indexOf("open"));
     const decorations = inspect(collect(state));
 
-    expect(widgetInstances(decorations, TaskCheckboxWidget).length).toBe(0);
+    expect(widgetInstances(decorations, TaskCheckboxWidget)).toHaveLength(0);
   });
 
   it("hides code fence marks and tags interior lines", () => {
@@ -221,7 +221,7 @@ describe("rich view decorations", () => {
         item.from >= fenceAt &&
         item.to <= fenceEnd + 3,
     );
-    expect(fenceHides.length).toBe(2);
+    expect(fenceHides).toHaveLength(2);
   });
 
   it("renders horizontal rules as widgets but never setext underlines", () => {
@@ -230,7 +230,7 @@ describe("rich view decorations", () => {
     const decorations = inspect(collect(state));
 
     const rules = widgetInstances(decorations, HrWidget);
-    expect(rules.length).toBe(1);
+    expect(rules).toHaveLength(1);
     expect(rules[0]?.found.from).toBe(doc.indexOf("---"));
   });
 
@@ -241,7 +241,7 @@ describe("rich view decorations", () => {
     const decorations = inspect(collect(state));
     const images = widgetInstances(decorations, ImageWidget);
 
-    expect(images.length).toBe(1);
+    expect(images).toHaveLength(1);
     expect(images[0]?.widget.src).toBe("https://example.invalid/a.png");
     expect(images[0]?.widget.alt).toBe("pic");
   });
@@ -253,7 +253,7 @@ describe("rich view decorations", () => {
     const decorations = inspect(collect(state));
     const math = widgetInstances(decorations, MathWidget);
 
-    expect(math.length).toBe(2);
+    expect(math).toHaveLength(2);
     expect(math[0]?.widget.display).toBe(false);
     expect(math[0]?.widget.tex).toBe("e^{i\\pi} + 1 = 0");
     expect(math[1]?.widget.display).toBe(true);
@@ -263,14 +263,14 @@ describe("rich view decorations", () => {
     const state = makeState("costs $5 today\n", 0);
     const decorations = inspect(collect(state));
 
-    expect(widgetInstances(decorations, MathWidget).length).toBe(0);
+    expect(widgetInstances(decorations, MathWidget)).toHaveLength(0);
   });
 
   it("never renders math inside code spans", () => {
     const state = makeState("use `$x$` inline\n", 0);
     const decorations = inspect(collect(state));
 
-    expect(widgetInstances(decorations, MathWidget).length).toBe(0);
+    expect(widgetInstances(decorations, MathWidget)).toHaveLength(0);
   });
 
   it("reveals raw math while the cursor edits that line", () => {
@@ -278,6 +278,6 @@ describe("rich view decorations", () => {
     const state = makeState(doc, doc.indexOf("x"));
     const decorations = inspect(collect(state));
 
-    expect(widgetInstances(decorations, MathWidget).length).toBe(0);
+    expect(widgetInstances(decorations, MathWidget)).toHaveLength(0);
   });
 });

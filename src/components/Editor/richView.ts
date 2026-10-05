@@ -249,7 +249,8 @@ const collectTaskSpans = (
       const task = TASK_LINE_PATTERN.exec(line.text);
       const prefix = task?.[1];
       if (prefix && task[2] !== undefined && !isActive(line.from, line.to)) {
-        const bulletIndex = prefix.search(/(?:[-*+]|\d+[.)])/);
+        // Single character class: no alternation, no backtracking.
+        const bulletIndex = prefix.search(/[-*+0-9]/);
         if (bulletIndex !== -1) {
           spans.set(line.number, {
             bulletFrom: line.from + bulletIndex,
@@ -345,8 +346,7 @@ const decorateLink = (
   if (marks.length < 2 || !marks[0] || !marks[1]) return;
   const open = marks[0];
   const close = marks[1];
-  replaces.push(hide(open.from, open.to));
-  replaces.push(hide(close.from, node.to));
+  replaces.push(hide(open.from, open.to), hide(close.from, node.to));
   if (open.to < close.from) {
     replaces.push(linkTextMark.range(open.to, close.from));
   }
@@ -368,6 +368,63 @@ const decorateImage = (
       widget: new ImageWidget(src, alt),
     }).range(node.from, node.to),
   );
+};
+
+/**
+ * Collects math widgets for the visible ranges. They follow the preview's
+ * $ / $$ rules, stay out of code, and yield to the active-line reveal.
+ * Single-line spans only: multiline display math would need block
+ * widgets, so it keeps its raw source.
+ */
+const collectMathWidgets = (
+  state: EditorState,
+  visible: readonly { from: number; to: number }[],
+  codeRanges: readonly { from: number; to: number }[],
+  isActive: (from: number, to: number) => boolean,
+  replaces: Range<Decoration>[],
+): void => {
+  for (const { from, to } of visible) {
+    const text = state.sliceDoc(from, to);
+    const mathRanges: { from: number; to: number }[] = [];
+    const pushMath = (
+      range: { from: number; to: number },
+      tex: string,
+      display: boolean,
+    ): void => {
+      if (!tex) return;
+      if (isActive(range.from, range.to)) return;
+      if (overlaps(range.from, range.to, codeRanges)) return;
+      if (overlaps(range.from, range.to, mathRanges)) return;
+      mathRanges.push(range);
+      replaces.push(
+        Decoration.replace({
+          widget: new MathWidget(tex, display),
+        }).range(range.from, range.to),
+      );
+    };
+    const displayMath = /\$\$([^$\n]+?)\$\$/g;
+    for (const match of text.matchAll(displayMath)) {
+      const at = match.index ?? 0;
+      pushMath(
+        { from: from + at, to: from + at + match[0].length },
+        match[1] ?? "",
+        true,
+      );
+    }
+    const inlineMath = /(^|[^\\])\$([^$\n]+?)\$/g;
+    for (const match of text.matchAll(inlineMath)) {
+      const at = match.index ?? 0;
+      const prefixLength = match[1]?.length ?? 0;
+      pushMath(
+        {
+          from: from + at + prefixLength,
+          to: from + at + match[0].length,
+        },
+        match[2] ?? "",
+        false,
+      );
+    }
+  }
 };
 
 /**
@@ -496,50 +553,8 @@ export const collectRichDecorations = (
   }
 
   // Math widgets follow the preview's $ / $$ rules, stay out of code, and
-  // yield to the active-line reveal. Single-line spans only: multiline
-  // display math would need block widgets, so it keeps its raw source.
-  for (const { from, to } of visible) {
-    const text = state.sliceDoc(from, to);
-    const mathRanges: { from: number; to: number }[] = [];
-    const pushMath = (
-      range: { from: number; to: number },
-      tex: string,
-      display: boolean,
-    ): void => {
-      if (!tex) return;
-      if (isActive(range.from, range.to)) return;
-      if (overlaps(range.from, range.to, codeRanges)) return;
-      if (overlaps(range.from, range.to, mathRanges)) return;
-      mathRanges.push(range);
-      replaces.push(
-        Decoration.replace({
-          widget: new MathWidget(tex, display),
-        }).range(range.from, range.to),
-      );
-    };
-    const displayMath = /\$\$([^$\n]+?)\$\$/g;
-    for (const match of text.matchAll(displayMath)) {
-      const at = match.index ?? 0;
-      pushMath(
-        { from: from + at, to: from + at + match[0].length },
-        match[1] ?? "",
-        true,
-      );
-    }
-    const inlineMath = /(^|[^\\])\$([^$\n]+?)\$/g;
-    for (const match of text.matchAll(inlineMath)) {
-      const at = match.index ?? 0;
-      const prefixLength = match[1]?.length ?? 0;
-      pushMath(
-        {
-          from: from + at + prefixLength,
-          to: from + at + match[0].length,
-        },
-        match[2] ?? "",
-        false,
-      );
-    }
-  }
+  // yield to the active-line reveal.
+  collectMathWidgets(state, visible, codeRanges, isActive, replaces);
 
   // Task lines: checkbox widget on the bracket span, and bullet glyph on
   // the raw bullet token when the marker is unordered.
