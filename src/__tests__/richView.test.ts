@@ -366,4 +366,34 @@ describe("rich view decorations", () => {
       host.remove();
     }
   });
+
+  it("keeps nested hides when a style mark spans a link", () => {
+    const doc = "intro\n\n**see [the docs](https://example.invalid/a) now**\n";
+    const state = makeState(doc, 0);
+    const decorations = inspect(collect(state));
+
+    // Both style marks survive; the overlap filter only owns replaces.
+    expect(classNames(decorations, "cm-rich-bold")).toBe(1);
+    expect(classNames(decorations, "cm-rich-link-text")).toBe(1);
+    // Bold delimiters plus the link bracket and URL collapses: 4 hides.
+    const hides = decorations.filter(
+      (item) =>
+        item.widget === undefined &&
+        !item.isLine &&
+        item.className === undefined,
+    );
+    expect(hides).toHaveLength(4);
+  });
+
+  it("keeps task-like lines inside fenced code raw", () => {
+    const doc = "intro\n\n```text\n- [ ] fenced task\n- [x] done\n```\n";
+    const state = makeState(doc, 0);
+    const decorations = inspect(collect(state));
+
+    // The fence owns its content: no checkbox or bullet widgets inside.
+    expect(widgetInstances(decorations, TaskCheckboxWidget)).toHaveLength(0);
+    expect(widgetInstances(decorations, BulletWidget)).toHaveLength(0);
+    // The task marker stays visible because nothing replaced it.
+    expect(state.sliceDoc(doc.indexOf("- [ ]"))).toContain("- [ ]");
+  });
 });

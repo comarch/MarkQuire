@@ -289,11 +289,14 @@ const decorateHeading = (
 
 // Emphasis-like nodes put their delimiters in the first and last children.
 // The whole node yields to the reveal so an edited line reads as raw text.
+// Delimiter hides go to replaces; the style mark goes to marks, where it
+// may legally overlap the hides of nested nodes (bold links, nested italics).
 const decorateEmphasis = (
   node: NodeLike,
   style: Decoration,
   isActive: (from: number, to: number) => boolean,
   replaces: Range<Decoration>[],
+  marks: Range<Decoration>[],
 ): void => {
   const first = node.firstChild;
   const last = node.lastChild;
@@ -303,7 +306,7 @@ const decorateEmphasis = (
   if (last !== first) {
     replaces.push(hide(last.from, last.to));
     if (first.to < last.from) {
-      replaces.push(style.range(first.to, last.from));
+      marks.push(style.range(first.to, last.from));
     }
   }
 };
@@ -313,6 +316,7 @@ const decorateInlineCode = (
   node: NodeLike,
   isActive: (from: number, to: number) => boolean,
   replaces: Range<Decoration>[],
+  marks: Range<Decoration>[],
 ): void => {
   if (isActive(node.from, node.to)) return;
   const first = node.firstChild;
@@ -322,7 +326,7 @@ const decorateInlineCode = (
   if (last !== first) {
     replaces.push(hide(last.from, last.to));
     if (first.to < last.from) {
-      replaces.push(codeMark.range(first.to, last.from));
+      marks.push(codeMark.range(first.to, last.from));
     }
   }
 };
@@ -335,20 +339,21 @@ const decorateLink = (
   node: NodeLike,
   isActive: (from: number, to: number) => boolean,
   replaces: Range<Decoration>[],
+  marks: Range<Decoration>[],
 ): void => {
   if (isActive(node.from, node.to)) return;
-  const marks: NodeLike[] = [];
+  const linkMarks: NodeLike[] = [];
   let child = node.firstChild;
   while (child) {
-    if (child.name === "LinkMark") marks.push(child);
+    if (child.name === "LinkMark") linkMarks.push(child);
     child = child.nextSibling;
   }
-  if (marks.length < 2 || !marks[0] || !marks[1]) return;
-  const open = marks[0];
-  const close = marks[1];
+  if (linkMarks.length < 2 || !linkMarks[0] || !linkMarks[1]) return;
+  const open = linkMarks[0];
+  const close = linkMarks[1];
   replaces.push(hide(open.from, open.to), hide(close.from, node.to));
   if (open.to < close.from) {
-    replaces.push(linkTextMark.range(open.to, close.from));
+    marks.push(linkTextMark.range(open.to, close.from));
   }
 };
 
@@ -427,29 +432,121 @@ const collectMathWidgets = (
   }
 };
 
+// Hides a quote mark and tags its line with the quote class. The line
+// class anchors at the line start so nested quote marks keep one class.
+const decorateQuoteMark = (
+  state: EditorState,
+  node: NodeLike,
+  isActive: (from: number, to: number) => boolean,
+  replaces: Range<Decoration>[],
+  lines: Range<Decoration>[],
+): void => {
+  if (!isActive(node.from, node.to)) {
+    replaces.push(hide(node.from, node.to));
+  }
+  const lineFrom = state.doc.lineAt(node.from).from;
+  lines.push(quoteLine.range(lineFrom, lineFrom));
+};
+
+// Tags the interior lines of a fenced code block so the code body reads
+// as a highlighted block while the fence marks themselves collapse.
+const decorateFenceInterior = (
+  state: EditorState,
+  node: NodeLike,
+  lines: Range<Decoration>[],
+): void => {
+  const first = state.doc.lineAt(node.from);
+  const last = state.doc.lineAt(node.to);
+  for (let n = first.number + 1; n < last.number; n += 1) {
+    const inner = state.doc.line(n);
+    lines.push(codeLine.range(inner.from, inner.from));
+  }
+};
+
+// Replaces an unordered list marker with a bullet glyph widget. Task
+// lines get their widgets from decorateTaskLines; ordered markers stay.
+const decorateListMark = (
+  state: EditorState,
+  node: NodeLike,
+  taskSpans: ReadonlyMap<number, TaskSpan>,
+  isActive: (from: number, to: number) => boolean,
+  bulletDepth: number,
+  replaces: Range<Decoration>[],
+): void => {
+  if (taskSpans.has(state.doc.lineAt(node.from).number)) return;
+  if (node.parent?.parent?.name !== "BulletList") return;
+  if (isActive(node.from, node.to)) return;
+  const glyph =
+    BULLET_GLYPHS[Math.min(bulletDepth - 1, BULLET_GLYPHS.length - 1)] ?? "•";
+  replaces.push(
+    Decoration.replace({
+      widget: new BulletWidget(glyph),
+    }).range(node.from, node.to),
+  );
+};
+
+// Task lines get the checkbox widget on the bracket span and a bullet
+// glyph on the raw bullet token when the marker is unordered. Task-like
+// lines inside fenced code keep their raw source: the preview toggle
+// skips fences too, so a widget there would be inert.
+const decorateTaskLines = (
+  state: EditorState,
+  taskSpans: ReadonlyMap<number, TaskSpan>,
+  codeRanges: readonly { from: number; to: number }[],
+  replaces: Range<Decoration>[],
+): void => {
+  for (const span of taskSpans.values()) {
+    const line = state.doc.lineAt(span.bracketFrom);
+    if (overlaps(line.from, line.to, codeRanges)) continue;
+    if (UNORDERED_BULLET.test(state.sliceDoc(span.bulletFrom, span.bulletTo))) {
+      replaces.push(
+        Decoration.replace({
+          widget: new BulletWidget(BULLET_GLYPHS[0] ?? "•"),
+        }).range(span.bulletFrom, span.bulletTo),
+      );
+    }
+    replaces.push(
+      Decoration.replace({
+        widget: new TaskCheckboxWidget(span.bulletFrom, span.checked),
+      }).range(span.bracketFrom, span.bracketFrom + 3),
+    );
+  }
+};
+
+// Replace decorations must not overlap: keep the earliest longest span
+// and drop the rest so widgets compose instead of colliding. Mark and
+// line decorations are allowed to overlap and stay out of this filter.
+const dedupeReplaces = (
+  replaces: readonly Range<Decoration>[],
+): Range<Decoration>[] => {
+  const sorted = [...replaces].sort((a, b) => a.from - b.from || b.to - a.to);
+  const kept: Range<Decoration>[] = [];
+  let lastTo = -1;
+  for (const candidate of sorted) {
+    if (candidate.from >= lastTo) {
+      kept.push(candidate);
+      lastTo = candidate.to;
+    }
+  }
+  return kept;
+};
+
 /**
- * Collects every rich-view decoration for the given visible ranges.
- * Exported so unit tests can drive it without a live EditorView.
+ * Walks the syntax tree over the visible ranges and dispatches every
+ * node kind to its decorator. The switch stays flat: one case per node
+ * name, each case a single call, so cognitive complexity stays low.
  */
-export const collectRichDecorations = (
+const collectTreeDecorations = (
   state: EditorState,
   visible: readonly { from: number; to: number }[],
-  activeLines: ReadonlySet<number>,
-): Range<Decoration>[] => {
-  const activeRanges = [...activeLines].map((line) => state.doc.line(line));
-  const isActive = (from: number, to: number): boolean =>
-    activeRanges.some((range) => from <= range.to && to >= range.from);
-
-  const taskSpans = collectTaskSpans(state, visible, isActive);
-
-  const replaces: Range<Decoration>[] = [];
-  const marks: Range<Decoration>[] = [];
-  const lines: Range<Decoration>[] = [];
-  // Code spans and fences: math widgets never render inside them.
-  const codeRanges: { from: number; to: number }[] = [];
-
+  isActive: (from: number, to: number) => boolean,
+  taskSpans: ReadonlyMap<number, TaskSpan>,
+  replaces: Range<Decoration>[],
+  marks: Range<Decoration>[],
+  lines: Range<Decoration>[],
+  codeRanges: { from: number; to: number }[],
+): void => {
   let bulletDepth = 0;
-
   for (const { from, to } of visible) {
     syntaxTree(state).iterate({
       from,
@@ -469,40 +566,31 @@ export const collectRichDecorations = (
             decorateHeading(node, isActive, replaces, lines);
             break;
           case "StrongEmphasis":
-            decorateEmphasis(node, boldMark, isActive, replaces);
+            decorateEmphasis(node, boldMark, isActive, replaces, marks);
             break;
           case "Emphasis":
-            decorateEmphasis(node, italicMark, isActive, replaces);
+            decorateEmphasis(node, italicMark, isActive, replaces, marks);
             break;
           case "Strikethrough":
-            decorateEmphasis(node, strikeMark, isActive, replaces);
+            decorateEmphasis(node, strikeMark, isActive, replaces, marks);
             break;
           case "InlineCode":
-            decorateInlineCode(node, isActive, replaces);
+            decorateInlineCode(node, isActive, replaces, marks);
             codeRanges.push({ from: node.from, to: node.to });
             break;
           case "Link":
-            decorateLink(node, isActive, replaces);
+            decorateLink(node, isActive, replaces, marks);
             break;
           case "Image":
             decorateImage(node, state, isActive, replaces);
             break;
           case "QuoteMark":
-            if (!isActive(node.from, node.to)) {
-              replaces.push(hide(node.from, node.to));
-            }
-            lines.push(quoteLine.range(ref.from, ref.from));
+            decorateQuoteMark(state, node, isActive, replaces, lines);
             break;
-          case "FencedCode": {
+          case "FencedCode":
             codeRanges.push({ from: node.from, to: node.to });
-            const first = state.doc.lineAt(node.from);
-            const last = state.doc.lineAt(node.to);
-            for (let n = first.number + 1; n < last.number; n += 1) {
-              const inner = state.doc.line(n);
-              lines.push(codeLine.range(inner.from, inner.from));
-            }
+            decorateFenceInterior(state, node, lines);
             break;
-          }
           case "CodeMark":
             if (!isActive(node.from, node.to)) {
               replaces.push(hide(node.from, node.to));
@@ -513,25 +601,16 @@ export const collectRichDecorations = (
               marks.push(codeLangMark.range(node.from, node.to));
             }
             break;
-          case "ListMark": {
-            if (taskSpans.has(state.doc.lineAt(node.from).number)) break;
-            const parent = node.parent?.parent;
-            if (
-              parent?.name === "BulletList" &&
-              !isActive(node.from, node.to)
-            ) {
-              const glyph =
-                BULLET_GLYPHS[
-                  Math.min(bulletDepth - 1, BULLET_GLYPHS.length - 1)
-                ] ?? "•";
-              replaces.push(
-                Decoration.replace({
-                  widget: new BulletWidget(glyph),
-                }).range(node.from, node.to),
-              );
-            }
+          case "ListMark":
+            decorateListMark(
+              state,
+              node,
+              taskSpans,
+              isActive,
+              bulletDepth,
+              replaces,
+            );
             break;
-          }
           case "HorizontalRule":
             if (!isActive(node.from, node.to)) {
               replaces.push(
@@ -551,41 +630,44 @@ export const collectRichDecorations = (
       },
     });
   }
+};
 
-  // Math widgets follow the preview's $ / $$ rules, stay out of code, and
-  // yield to the active-line reveal.
+/**
+ * Collects every rich-view decoration for the given visible ranges.
+ * Exported so unit tests can drive it without a live EditorView.
+ */
+export const collectRichDecorations = (
+  state: EditorState,
+  visible: readonly { from: number; to: number }[],
+  activeLines: ReadonlySet<number>,
+): Range<Decoration>[] => {
+  const activeRanges = [...activeLines].map((line) => state.doc.line(line));
+  const isActive = (from: number, to: number): boolean =>
+    activeRanges.some((range) => from <= range.to && to >= range.from);
+
+  const taskSpans = collectTaskSpans(state, visible, isActive);
+
+  const replaces: Range<Decoration>[] = [];
+  const marks: Range<Decoration>[] = [];
+  const lines: Range<Decoration>[] = [];
+  // Code spans and fences: math widgets and task widgets never render
+  // inside them.
+  const codeRanges: { from: number; to: number }[] = [];
+
+  collectTreeDecorations(
+    state,
+    visible,
+    isActive,
+    taskSpans,
+    replaces,
+    marks,
+    lines,
+    codeRanges,
+  );
   collectMathWidgets(state, visible, codeRanges, isActive, replaces);
+  decorateTaskLines(state, taskSpans, codeRanges, replaces);
 
-  // Task lines: checkbox widget on the bracket span, and bullet glyph on
-  // the raw bullet token when the marker is unordered.
-  for (const span of taskSpans.values()) {
-    if (UNORDERED_BULLET.test(state.sliceDoc(span.bulletFrom, span.bulletTo))) {
-      replaces.push(
-        Decoration.replace({
-          widget: new BulletWidget(BULLET_GLYPHS[0] ?? "•"),
-        }).range(span.bulletFrom, span.bulletTo),
-      );
-    }
-    replaces.push(
-      Decoration.replace({
-        widget: new TaskCheckboxWidget(span.bulletFrom, span.checked),
-      }).range(span.bracketFrom, span.bracketFrom + 3),
-    );
-  }
-
-  // Replace decorations must not overlap: keep the earliest longest span
-  // and drop the rest so widgets compose instead of colliding.
-  replaces.sort((a, b) => a.from - b.from || b.to - a.to);
-  const keptReplaces: Range<Decoration>[] = [];
-  let lastTo = -1;
-  for (const candidate of replaces) {
-    if (candidate.from >= lastTo) {
-      keptReplaces.push(candidate);
-      lastTo = candidate.to;
-    }
-  }
-
-  return [...keptReplaces, ...marks, ...lines];
+  return [...dedupeReplaces(replaces), ...marks, ...lines];
 };
 
 const richViewPlugin = ViewPlugin.fromClass(
