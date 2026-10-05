@@ -121,7 +121,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   syncScroll: true,
   templatesFolderId: "",
   language: "en",
-  richView: false,
+  richView: true,
   ai: defaultAISettings(),
   companionUrl: "",
 };

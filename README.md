@@ -118,7 +118,9 @@ teams use them.
 ### Focused authoring
 
 - Split, editor-only, and preview-only layouts with synchronized scrolling.
-- WYSIWYG rich text view over the source editor.
+- Typora-style WYSIWYG view on by default: hidden marks, rendered lists,
+  clickable task checkboxes, images, inline math, and raw syntax revealed on
+  the line being edited.
 - Formatting toolbar, table editing, and structure tools that move sections,
   number headings, and insert a table of contents.
 - Templates and snippets, including organization templates from a Drive folder.

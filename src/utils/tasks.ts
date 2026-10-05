@@ -1,6 +1,6 @@
 // Blockquote markers are allowed so quoted task lists map to their source
 // line the same way the renderer shows them.
-const TASK_LINE_PATTERN =
+export const TASK_LINE_PATTERN =
   /^([ \t]*(?:>[ \t]*)*(?:[-*+]|\d+[.)])[ \t]+)\[([ xX])\][ \t]+/;
 
 function isFenceLine(line: string): boolean {
