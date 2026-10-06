@@ -228,6 +228,25 @@ describe("GoogleDriveService", () => {
     expect(urls[1]?.searchParams.get("alt")).toBe("media");
   });
 
+  it("rejects Drive request URLs with an unexpected origin", async () => {
+    setRealToken();
+    const service = await createDriveService();
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    class UnexpectedOriginURL extends URL {
+      override get origin() {
+        return "https://attacker.invalid";
+      }
+    }
+    vi.stubGlobal("URL", UnexpectedOriginURL);
+
+    await expect(service.getFile("file_123")).rejects.toThrow(
+      "Invalid Google Drive URL",
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("lists real revisions newest first across pages", async () => {
     setRealToken();
     const service = await createDriveService();
