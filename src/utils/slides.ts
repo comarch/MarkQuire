@@ -77,11 +77,13 @@ function splitByHeadings(body: string): string[] {
   );
 }
 
+const HEADING_TITLE_PATTERN = /^#{1,6}[ \t]+([^ \t\r\n\u2028\u2029].*)$/;
+
 /** First heading or non-empty line of a slide, for the agenda list. */
 export function slideTitle(slide: string): string {
   const heading = slide
     .split("\n")
-    .map((line) => /^#{1,6}[ \t]+(.+)$/.exec(line.trim()))
+    .map((line) => HEADING_TITLE_PATTERN.exec(line.trim()))
     .find(Boolean);
   const fromHeading = heading?.[1]?.trim();
   if (fromHeading) return fromHeading;

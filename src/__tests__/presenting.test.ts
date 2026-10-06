@@ -42,6 +42,12 @@ describe("slideTitle", () => {
   it("falls back to the first text line", () => {
     expect(slideTitle("Just a line\n\nmore")).toBe("Just a line");
   });
+
+  it("supports tab-separated headings up to level six", () => {
+    expect(slideTitle("####### Not a heading\n######\tDeep title")).toBe(
+      "Deep title",
+    );
+  });
 });
 
 describe("buildStaticSiteHtml", () => {

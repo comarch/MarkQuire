@@ -20,6 +20,12 @@ describe("scanOutgoingLinks", () => {
     expect(links).toEqual([{ target: "index.md", kind: "md-link" }]);
   });
 
+  it("continues after malformed links with nested opening brackets", () => {
+    expect(scanOutgoingLinks("[outer](bad path [Guide](guide.md)")).toEqual([
+      { target: "guide.md", kind: "md-link" },
+    ]);
+  });
+
   it("skips fenced code blocks", () => {
     const content = "[[Real]]\n\n```md\n[[Fake]] and [x](fake.md)\n```\n";
     expect(scanOutgoingLinks(content)).toEqual([

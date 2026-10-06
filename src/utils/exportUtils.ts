@@ -244,13 +244,12 @@ export function exportAsPdf() {
 }
 
 function slugify(str: string): string {
-  return (
-    str
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+/g, "")
-      .replace(/-+$/g, "") || "export"
-  );
+  const slug = str.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  let start = 0;
+  let end = slug.length;
+  while (start < end && slug[start] === "-") start += 1;
+  while (end > start && slug[end - 1] === "-") end -= 1;
+  return start === end ? "export" : slug.slice(start, end);
 }
 
 function escapeHtml(str: string): string {

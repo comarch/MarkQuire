@@ -1,8 +1,13 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
-import { buildHtmlDocument } from "../utils/exportUtils";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { buildHtmlDocument, exportAsStaticSite } from "../utils/exportUtils";
 import { inlineKatexFonts, katexFontNames } from "../utils/exportAssets";
+
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 const katexCss = readFileSync(
   resolve(process.cwd(), "node_modules/katex/dist/katex.min.css"),
@@ -35,6 +40,29 @@ describe("buildHtmlDocument", () => {
     );
     expect(html).toMatch(/<h1[^>]*>Heading<\/h1>/);
     expect(html).toContain("body text");
+  });
+});
+
+describe("exportAsStaticSite", () => {
+  it("normalizes download names and uses a fallback for empty slugs", async () => {
+    const downloadNames: string[] = [];
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      downloadNames.push(this.download);
+    });
+    vi.stubGlobal("URL", {
+      createObjectURL: vi.fn(() => "blob:markquire"),
+      revokeObjectURL: vi.fn(),
+    });
+
+    await exportAsStaticSite("!!! MarkQuire - Guide !!!", []);
+    await exportAsStaticSite("!!!", []);
+
+    expect(downloadNames).toEqual([
+      "markquire-guide-site.html",
+      "export-site.html",
+    ]);
   });
 });
 

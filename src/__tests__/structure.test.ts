@@ -108,6 +108,21 @@ describe("numberHeadings", () => {
     expect(numbered).toContain("## 1. Head");
     expect(numbered).toContain("## Keep");
   });
+
+  it("strips only valid generated number prefixes", () => {
+    const markdown =
+      "## 1.2. Existing number\n" +
+      "## 1234567890. Long component\n" +
+      "## 1.. Invalid number\n";
+    expect(numberHeadings(markdown, false)).toBe(
+      "## Existing number\n" +
+        "## 1234567890. Long component\n" +
+        "## 1.. Invalid number\n",
+    );
+    expect(numberHeadings("## 1234567890. Long component", true)).toBe(
+      "## 1. 1234567890. Long component",
+    );
+  });
 });
 
 describe("generateTableOfContents", () => {

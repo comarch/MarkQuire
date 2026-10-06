@@ -39,8 +39,48 @@ export interface FolderDocument {
 }
 
 const WIKILINK_PATTERN = /\[\[([^\]|]{1,400})(?:\|[^\]]{0,400})?\]\]/g;
-const MD_LINK_PATTERN = /\[([^\]]*)\]\(([^)\s]{1,2000})\)/g;
 const MAX_INDEXED_FILES = 25;
+
+function findMarkdownLinkTargets(line: string): string[] {
+  const targets: string[] = [];
+  let searchFrom = 0;
+  let closingParenthesis = -1;
+  let closingParenthesisSearchFrom = 0;
+
+  while (searchFrom < line.length) {
+    const labelStart = line.indexOf("[", searchFrom);
+    if (labelStart === -1) break;
+    const labelEnd = line.indexOf("]", labelStart + 1);
+    if (labelEnd === -1) break;
+    if (line[labelEnd + 1] !== "(") {
+      searchFrom = labelEnd + 1;
+      continue;
+    }
+
+    const targetStart = labelEnd + 2;
+    if (targetStart >= closingParenthesisSearchFrom) {
+      closingParenthesis = line.indexOf(")", targetStart);
+      closingParenthesisSearchFrom =
+        closingParenthesis === -1 ? line.length : closingParenthesis + 1;
+    }
+    const targetEnd = closingParenthesis;
+    if (targetEnd === -1) {
+      searchFrom = labelEnd + 1;
+      continue;
+    }
+
+    const target = line.slice(targetStart, targetEnd);
+    if (target.length === 0 || target.length > 2000 || /\s/.test(target)) {
+      searchFrom = labelEnd + 1;
+      continue;
+    }
+
+    targets.push(target);
+    searchFrom = targetEnd + 1;
+  }
+
+  return targets;
+}
 
 function stripExtension(name: string): string {
   return name.replace(/\.(md|markdown)$/i, "");
@@ -84,8 +124,7 @@ export function scanOutgoingLinks(content: string): OutgoingLink[] {
       const name = match[1]?.trim();
       if (name) links.push({ target: name, kind: "wikilink" });
     }
-    for (const match of line.matchAll(MD_LINK_PATTERN)) {
-      const href = match[2] ?? "";
+    for (const href of findMarkdownLinkTargets(line)) {
       if (
         !href ||
         /^(?:[a-z][a-z0-9+.-]*:|\/\/|#|mailto:)/i.test(href) ||

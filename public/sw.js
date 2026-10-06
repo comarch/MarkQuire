@@ -44,34 +44,47 @@ self.addEventListener("fetch", (event) => {
 
   // Hashed build assets: cache-first, they are immutable per deploy.
   if (url.pathname.startsWith("/assets/")) {
-    event.respondWith(
-      caches.match(request).then(
-        (cached) =>
-          cached ??
-          fetch(request).then((response) => {
-            if (response.ok) {
-              const copy = response.clone();
-              caches
-                .open(SHELL_CACHE)
-                .then((cache) => cache.put(request, copy));
-            }
-            return response;
-          }),
-      ),
+    let fromCache = false;
+    const responsePromise = caches.match(request).then((cached) => {
+      if (cached) {
+        fromCache = true;
+        return cached;
+      }
+      return fetch(request);
+    });
+    event.respondWith(responsePromise);
+    event.waitUntil(
+      responsePromise
+        .then((response) => {
+          if (fromCache || !response.ok) return;
+          const copy = response.clone();
+          return caches
+            .open(SHELL_CACHE)
+            .then((cache) => cache.put(request, copy));
+        })
+        .catch(() => {}),
     );
     return;
   }
 
   // Everything else same-origin: network-first, cache fallback.
-  event.respondWith(
-    fetch(request)
+  let fromNetwork = false;
+  const responsePromise = fetch(request)
+    .then((response) => {
+      fromNetwork = true;
+      return response;
+    })
+    .catch(() => caches.match(request));
+  event.respondWith(responsePromise);
+  event.waitUntil(
+    responsePromise
       .then((response) => {
-        if (response.ok) {
-          const copy = response.clone();
-          caches.open(RUNTIME_CACHE).then((cache) => cache.put(request, copy));
-        }
-        return response;
+        if (!fromNetwork || !response?.ok) return;
+        const copy = response.clone();
+        return caches
+          .open(RUNTIME_CACHE)
+          .then((cache) => cache.put(request, copy));
       })
-      .catch(() => caches.match(request)),
+      .catch(() => {}),
   );
 });

@@ -20,7 +20,51 @@ interface HeadingMark {
   text: string;
 }
 
-const HEADING_PATTERN = /^(#{1,6})[ \t]+(.+)$/;
+const HEADING_PATTERN = /^(#{1,6})[ \t]+([^ \t\r\n\u2028\u2029].*)$/;
+const NUMBERED_HEADING_PATTERN = /^(#{2,6})[ \t]+([^ \t\r\n\u2028\u2029].*)$/;
+
+function isDigit(value: string | undefined): boolean {
+  if (!value) return false;
+  const code = value.charCodeAt(0);
+  return code >= 48 && code <= 57;
+}
+
+function parseNumberedHeading(
+  line: string,
+): { hashes: string; existingNumber: string | null; text: string } | null {
+  const match = NUMBERED_HEADING_PATTERN.exec(line);
+  if (!match?.[1] || !match[2]) return null;
+  const hashes = match[1];
+  const text = match[2];
+
+  let cursor = 0;
+  const parts: string[] = [];
+  while (true) {
+    const start = cursor;
+    while (isDigit(text[cursor])) cursor += 1;
+    const digits = text.slice(start, cursor);
+    if (digits.length === 0 || digits.length > 9) {
+      return { hashes, existingNumber: null, text };
+    }
+    parts.push(digits);
+    if (text[cursor] !== ".") {
+      return { hashes, existingNumber: null, text };
+    }
+    cursor += 1;
+    if (text[cursor] === " " || text[cursor] === "\t") {
+      while (text[cursor] === " " || text[cursor] === "\t") {
+        cursor += 1;
+      }
+      const remainder = text.slice(cursor);
+      return remainder.length > 0
+        ? { hashes, existingNumber: parts.join("."), text: remainder }
+        : { hashes, existingNumber: null, text };
+    }
+    if (!isDigit(text[cursor])) {
+      return { hashes, existingNumber: null, text };
+    }
+  }
+}
 
 function scanHeadings(lines: string[]): HeadingMark[] {
   const marks: HeadingMark[] = [];
@@ -37,9 +81,7 @@ function scanHeadings(lines: string[]): HeadingMark[] {
       }
       return false;
     }
-    if (trimmed.startsWith(fence)) {
-      fence = null;
-    }
+    if (trimmed.startsWith(fence)) fence = null;
     return true;
   };
 
@@ -47,14 +89,15 @@ function scanHeadings(lines: string[]): HeadingMark[] {
     const line = lines[index] ?? "";
     if (isCodeFence(line.trimStart())) continue;
     if (index < skipUntil) continue;
-    const match = HEADING_PATTERN.exec(line);
-    if (!match?.[1] || !match[2]) continue;
+    const heading = HEADING_PATTERN.exec(line);
+    if (!heading?.[1] || !heading[2]) continue;
     marks.push({
       line: index + 1,
-      level: match[1].length,
-      text: match[2].trim(),
+      level: heading[1].length,
+      text: heading[2].trim(),
     });
   }
+
   return marks;
 }
 
@@ -86,7 +129,9 @@ export function extractSections(markdown: string): Section[] {
 }
 
 function sectionAt(sections: Section[], headingLine: number): Section | null {
-  return sections.find((s) => s.headingLine === headingLine) ?? null;
+  return (
+    sections.find((section) => section.headingLine === headingLine) ?? null
+  );
 }
 
 /**
@@ -130,9 +175,6 @@ export function moveSectionBy(
   return [...before, ...first, ...second, ...after].join("\n");
 }
 
-const NUMBERED_HEADING =
-  /^(#{2,6})[ \t]+(?:(\d{1,9}(?:\.\d{1,9})*)\.[ \t]+)?(.+)$/;
-
 /**
  * Adds or removes sequential numbering on level 2+ headings. H1 stays
  * unnumbered as the document title. Toggling off strips only generated
@@ -158,15 +200,14 @@ export function numberHeadings(markdown: string, enabled: boolean): string {
       }
       if (index < skipUntil) return line;
 
-      const match = NUMBERED_HEADING.exec(line);
-      if (!match) return line;
-      const [, hashes, existing, text] = match;
-      if (!hashes || !text) return line;
+      const heading = parseNumberedHeading(line);
+      if (!heading) return line;
+      const { hashes, existingNumber, text } = heading;
       const level = hashes.length;
 
       if (!enabled) {
         // Remove only a generated number; keep user text intact.
-        return existing ? `${hashes} ${text}` : line;
+        return existingNumber ? `${hashes} ${text}` : line;
       }
 
       const depth = level - 1;
