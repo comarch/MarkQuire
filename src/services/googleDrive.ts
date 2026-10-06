@@ -1,7 +1,8 @@
 import { DriveFileMetadata, DriveRevision } from "../types/drive";
 import { authService } from "./googleAuth";
 
-const DRIVE_API_BASE = "https://www.googleapis.com/drive/v3";
+const GOOGLE_API_ORIGIN = "https://www.googleapis.com";
+const DRIVE_API_BASE = `${GOOGLE_API_ORIGIN}/drive/v3`;
 const UPLOAD_API_BASE = "https://www.googleapis.com/upload/drive/v3";
 
 // Local mock storage for offline / testing without Google credentials
@@ -15,6 +16,20 @@ function assertValidDriveId(id: string, label: string): void {
   if (!DRIVE_ID_PATTERN.test(id)) {
     throw new Error(`Invalid ${label}`);
   }
+}
+
+function buildDriveFileUrl(
+  fileId: string,
+  params: Record<string, string>,
+): string {
+  const url = new URL(`${DRIVE_API_BASE}/files/${encodeURIComponent(fileId)}`);
+  if (url.origin !== GOOGLE_API_ORIGIN) {
+    throw new Error("Invalid Google Drive URL");
+  }
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, value);
+  }
+  return url.href;
 }
 
 interface MockFileEntry {
@@ -72,7 +87,10 @@ export class GoogleDriveService {
 
     // 1. Fetch metadata
     const metaRes = await fetch(
-      `${DRIVE_API_BASE}/files/${encodeURIComponent(fileId)}?fields=id,name,mimeType,modifiedTime,webViewLink,parents,capabilities,headRevisionId`,
+      buildDriveFileUrl(fileId, {
+        fields:
+          "id,name,mimeType,modifiedTime,webViewLink,parents,capabilities,headRevisionId",
+      }),
       {
         headers: { Authorization: `Bearer ${token}` },
       },
@@ -86,7 +104,7 @@ export class GoogleDriveService {
 
     // 2. Fetch file content
     const contentRes = await fetch(
-      `${DRIVE_API_BASE}/files/${encodeURIComponent(fileId)}?alt=media`,
+      buildDriveFileUrl(fileId, { alt: "media" }),
       {
         headers: { Authorization: `Bearer ${token}` },
       },

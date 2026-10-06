@@ -182,6 +182,9 @@ describe("GoogleDriveService", () => {
   it("rejects malformed ids at every service entry point", async () => {
     const service = await createDriveService();
     await expect(service.getFile("bad/id")).rejects.toThrow("Invalid file id");
+    await expect(service.getFile("https://attacker.invalid")).rejects.toThrow(
+      "Invalid file id",
+    );
     await expect(service.updateFile("bad id", "x")).rejects.toThrow(
       "Invalid file id",
     );
@@ -191,6 +194,38 @@ describe("GoogleDriveService", () => {
     await expect(service.fetchHeadRevisionId("..")).rejects.toThrow(
       "Invalid file id",
     );
+  });
+
+  it("keeps metadata and content requests on the Google Drive origin", async () => {
+    setRealToken();
+    const service = await createDriveService();
+    const metadata = {
+      id: "file_123",
+      name: "notes.md",
+      mimeType: "text/markdown",
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(metadata), { status: 200 }),
+      )
+      .mockResolvedValueOnce(new Response("# Notes", { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(service.getFile("file_123")).resolves.toEqual({
+      metadata,
+      content: "# Notes",
+    });
+
+    const urls = fetchMock.mock.calls.map(([input]) => new URL(String(input)));
+    expect(urls.map((url) => url.origin)).toEqual([
+      "https://www.googleapis.com",
+      "https://www.googleapis.com",
+    ]);
+    expect(urls[0]?.searchParams.get("fields")).toBe(
+      "id,name,mimeType,modifiedTime,webViewLink,parents,capabilities,headRevisionId",
+    );
+    expect(urls[1]?.searchParams.get("alt")).toBe("media");
   });
 
   it("lists real revisions newest first across pages", async () => {
