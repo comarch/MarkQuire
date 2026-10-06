@@ -97,6 +97,7 @@
   },
   "overrides": {
     "lodash-es": "^4.18.1",
+    "source-map-js": "1.2.2",
     "@excalidraw/excalidraw": {
       "nanoid": "^3.3.19",
       "sass": "^1.105.1"
