@@ -87,9 +87,16 @@ To make the app appear in Google Drive's "Nowy" (New) and "Otwórz w" (Open with
    - **Application icon (16x16)**: `/public/icons/icon-16.png` - appears next to the app name in the Drive menu.
    - **Application icon (32x32)**: `/public/icons/icon-32.png` - appears in file listings and context menus.
    - **Application icon (128x128)**: `/public/icons/icon-128.png` - appears in Marketplace and app listings.
-5. Configure URLs:
-   - **Open URL**: `https://comarch.github.io/MarkQuire/?state=${state}`
-   - **Create (New) URL**: `https://comarch.github.io/MarkQuire/?state=${state}`
+5. Configure URLs (plain URLs without a `state` parameter - Drive appends
+   the `state` query parameter automatically):
+   - **Open URL**: `https://comarch.github.io/MarkQuire/`
+   - **Create (New) URL**: `https://comarch.github.io/MarkQuire/`
+
+   Do not enter the legacy `${state}` template in these fields. With the
+   "Automatically show the OAuth 2.0 consent screen" option enabled, saving
+   a URL containing `${state}` fails with
+   `Request contains an invalid argument` (verified on a real project).
+
 6. Configure Document creation:
    - Check **"Allow users to create new documents"**.
    - **New document menu item label**: `Markdown Document` (or `Dokument Markdown`).

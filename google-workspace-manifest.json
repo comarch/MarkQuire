@@ -15,8 +15,8 @@
       "icon32": "https://comarch.github.io/MarkQuire/icons/icon-32.png",
       "icon128": "https://comarch.github.io/MarkQuire/icons/icon-128.png"
     },
-    "createUrl": "https://comarch.github.io/MarkQuire/?state=${state}",
-    "openUrl": "https://comarch.github.io/MarkQuire/?state=${state}",
+    "createUrl": "https://comarch.github.io/MarkQuire/",
+    "openUrl": "https://comarch.github.io/MarkQuire/",
     "defaultMimeTypes": ["text/markdown", "text/x-markdown", "text/plain"],
     "defaultFileExtensions": ["md", "markdown"],
     "secondaryMimeTypes": ["text/plain"],
